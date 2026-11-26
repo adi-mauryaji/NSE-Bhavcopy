@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NSE Bhavcopy — local</title>
+<style>
+  :root{
+    color-scheme: light;
+    --surface-1:#ffffff; --plane:#f9f9f9;
+    --text-1:#191919; --text-2:#666666;
+    --grid:#e7e7e7; --baseline:#c2c2c2; --ring:rgba(11,11,11,0.10);
+    --s1:#257de0; --s2:#f47230; --s3:#00b894; --s4:#f2a600;
+    --good:#006c10; --bad:#dc3c3d;
+    --ghost:rgba(37,125,224,0.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])){
+      color-scheme: dark;
+      --surface-1:#191919; --plane:#0b0b0b;
+      --text-1:#efefef; --text-2:#9c9c9c;
+      --grid:#303030; --baseline:#474747; --ring:rgba(255,255,255,0.10);
+      --s1:#338ced; --s2:#e76624; --s3:#00a888; --s4:#d28e05;
+      --good:#53c556; --bad:#eb6263;
+      --ghost:rgba(51,140,237,0.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --surface-1:#191919; --plane:#0b0b0b;
+    --text-1:#efefef; --text-2:#9c9c9c;
+    --grid:#303030; --baseline:#474747; --ring:rgba(255,255,255,0.10);
+    --s1:#338ced; --s2:#e76624; --s3:#00a888; --s4:#d28e05;
+    --good:#53c556; --bad:#eb6263;
+    --ghost:rgba(51,140,237,0.14);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--plane); color:var(--text-1);
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:20px 20px 64px}
+
+  header{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:4px}
+  h1{font-size:19px; font-weight:600; margin:0; letter-spacing:-0.01em}
+  .sub{color:var(--text-2); font-size:13px}
+  .spacer{flex:1}
+  button, select, input[type=text]{
+    font:inherit; font-size:13px; color:var(--text-1);
+    background:var(--surface-1); border:1px solid var(--ring);
+    border-radius:8px; padding:6px 11px; cursor:pointer;
+  }
+  button:hover, select:hover{background:var(--ghost)}
+  button:disabled{opacity:.5; cursor:default}
+  input[type=text]{cursor:text}
+  :focus-visible{outline:2px solid var(--s1); outline-offset:2px}
+
+  /* ---- one filter row, above every chart ---- */
+  .filters{
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    padding:12px 0 14px; margin-bottom:14px;
+    border-bottom:1px solid var(--ring);
+  }
+  .flabel{font-size:12px; color:var(--text-2); margin-right:-4px}
+  .chips{display:flex; gap:6px; flex-wrap:wrap}
+  .chip{
+    border:1px solid var(--ring); background:var(--surface-1); color:var(--text-1);
+    border-radius:999px; padding:5px 12px; font-size:13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  .chip:hover{background:var(--ghost)}
+  .chip[aria-pressed=true]{border-color:transparent; box-shadow:inset 0 0 0 1.5px var(--pill,var(--s1))}
+  .chip .dot{width:8px; height:8px; border-radius:50%; background:var(--pill,var(--s1)); display:none}
+  .chip[aria-pressed=true] .dot{display:block}
+  .seg{display:inline-flex; border:1px solid var(--ring); border-radius:8px; overflow:hidden}
+  .seg button{border:0; border-radius:0; padding:6px 10px}
+  .seg button[aria-pressed=true]{background:var(--ghost); font-weight:600}
+  .check{display:inline-flex; align-items:center; gap:7px; font-size:13px; cursor:pointer}
+  /* right-hand actions stay right even when the filter row wraps */
+  .filters .actions{display:flex; gap:10px; margin-left:auto}
+
+  main.loading{opacity:.45; transition:opacity .12s}
+
+  /* ---- hero + stat tiles ---- */
+  .hero{margin:6px 0 18px}
+  .hero .label{font-size:13px; color:var(--text-2)}
+  .hero .figure{font-size:52px; font-weight:600; line-height:1.05; letter-spacing:-0.02em}
+  .hero .meta{font-size:13px; color:var(--text-2); margin-top:2px}
+  .delta{font-weight:600}
+  .up{color:var(--good)} .down{color:var(--bad)}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:18px}
+  .tile{background:var(--surface-1); border:1px solid var(--ring); border-radius:10px; padding:11px 13px}
+  .tile .k{font-size:12px; color:var(--text-2)}
+  .tile .v{font-size:20px; font-weight:600; margin-top:3px}
+  .tile .n{font-size:11px; color:var(--text-2); margin-top:2px}
+
+  .card{background:var(--surface-1); border:1px solid var(--ring); border-radius:12px; padding:16px 18px 10px; margin-bottom:14px}
+  .card h2{font-size:14px; font-weight:600; margin:0}
+  .card .csub{font-size:12px; color:var(--text-2); margin:2px 0 10px}
+  .chart{position:relative}
+  .chart svg{display:block; width:100%; overflow:visible}
+  .gridline{stroke:var(--grid); stroke-width:1}
+  .axisline{stroke:var(--baseline); stroke-width:1}
+  .markline{stroke:var(--baseline); stroke-width:1}
+  text.tick{fill:var(--text-2); font-size:11px; font-variant-numeric:tabular-nums}
+  text.endlab{fill:var(--text-2); font-size:11px; font-weight:600}
+  .hit{fill:transparent}
+  .crosshair{stroke:var(--baseline); stroke-width:1}
+
+  .tip{
+    position:absolute; pointer-events:none; opacity:0; transition:opacity .08s;
+    background:var(--surface-1); border:1px solid var(--ring); border-radius:9px;
+    padding:8px 10px; font-size:12px; min-width:132px;
+    box-shadow:0 6px 18px rgba(0,0,0,.14); z-index:5;
+  }
+  .tip .td{color:var(--text-2); margin-bottom:5px; font-size:11px}
+  .tip .row{display:flex; align-items:center; gap:8px; justify-content:space-between; margin-top:3px}
+  .tip .key{display:inline-flex; align-items:center; gap:6px; color:var(--text-2)}
+  .tip .lk{width:12px; height:2px; border-radius:1px; flex:none}
+  .tip .val{font-weight:600; font-variant-numeric:tabular-nums; color:var(--text-1)}
+
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin:10px 0 2px; font-size:12px; color:var(--text-2)}
+  .legend span.k{display:inline-flex; align-items:center; gap:6px}
+  .legend i{width:14px; height:2px; border-radius:1px; display:block}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th,td{text-align:right; padding:6px 8px; border-bottom:1px solid var(--ring); font-variant-numeric:tabular-nums}
+  th{color:var(--text-2); font-weight:500; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em}
+  th:first-child, td:first-child{text-align:left; font-variant-numeric:normal}
+  .tscroll{max-height:360px; overflow:auto}
+  .note{font-size:12px; color:var(--text-2); margin:8px 0 2px}
+  pre.log{
+    background:var(--plane); border:1px solid var(--ring); border-radius:8px;
+    padding:10px 12px; font-size:12px; max-height:260px; overflow:auto; margin:10px 0 0;
+    white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .empty{text-align:center; padding:40px 20px; color:var(--text-2)}
+  .empty strong{color:var(--text-1); display:block; font-size:16px; margin-bottom:6px}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>NSE Bhavcopy</h1>
+    <span class="sub" id="dbinfo">loading…</span>
+    <span class="spacer"></span>
+    <button id="themeBtn" title="light / dark">theme</button>
+  </header>
+
+  <div class="filters" id="filters">
+    <span class="flabel">Symbol</span>
+    <div class="chips" id="symChips"></div>
+    <span class="flabel hidden" id="idxLabel" style="margin-left:8px">Index</span>
+    <div class="chips" id="idxChips"></div>
+    <span class="flabel" style="margin-left:8px">Range</span>
+    <div class="seg" id="rangeSeg"></div>
+    <label class="check"><input type="checkbox" id="adjChk" checked> split/bonus adjusted</label>
+    <div class="actions">
+      <button id="exportBtn">↓ CSV</button>
+      <button id="syncToggle">+ Fetch data</button>
+    </div>
+  </div>
+
+  <section class="card hidden" id="syncCard">
+    <h2>Fetch data from MCP</h2>
+    <p class="csub">This makes network calls — straight to the NSE Bhavcopy MCP server from this
+      laptop. A 5-year backfill for a new symbol takes ~20 calls / ~50s; a symbol already cached takes ~3.</p>
+    <div class="row">
+      <div class="seg" id="syncKind">
+        <button type="button" data-kind="stock" aria-pressed="true">Stock</button>
+        <button type="button" data-kind="index" aria-pressed="false">Index</button>
+      </div>
+      <input type="text" id="syncSyms" placeholder="RELIANCE, TCS, INFY" size="32">
+      <select id="syncYears">
+        <option value="1">1 year</option><option value="3">3 years</option>
+        <option value="5" selected>5 years</option>
+      </select>
+      <button id="syncRun">Run sync</button>
+      <span class="sub" id="syncState"></span>
+    </div>
+    <pre class="log hidden" id="syncLog"></pre>
+  </section>
+
+  <main id="main">
+    <div class="empty" id="emptyState">
+      <strong>Local database is empty</strong>
+      Use “+ Fetch data” above to sync a symbol — after that everything runs offline.
+    </div>
+
+    <section class="hero hidden" id="hero">
+      <div class="label" id="heroLabel"></div>
+      <div class="figure" id="heroFigure"></div>
+      <div class="meta" id="heroMeta"></div>
+    </section>
+
+    <div class="kpis hidden" id="kpis"></div>
+
+    <section class="card hidden" id="priceCard">
+      <h2 id="priceTitle"></h2>
+      <p class="csub" id="priceSub"></p>
+      <div class="chart" id="priceChart"></div>
+      <div class="legend hidden" id="priceLegend"></div>
+      <p class="note hidden" id="markNote"></p>
+    </section>
+
+    <section class="card hidden" id="volCard">
+      <h2>Volume</h2>
+      <p class="csub" id="volSub"></p>
+      <div class="chart" id="volChart"></div>
+    </section>
+
+    <section class="card hidden" id="tableCard">
+      <div class="row">
+        <h2 id="tableTitle">Table view</h2>
+        <span class="spacer"></span>
+        <button id="tableToggle">Show</button>
+      </div>
+      <p class="csub">Every value is readable here — no chart hover needed.</p>
+      <div class="tscroll hidden" id="tableWrap"></div>
+    </section>
+
+    <section class="card hidden" id="actCard">
+      <h2>Corporate actions</h2>
+      <p class="csub" id="actSub"></p>
+      <div class="tscroll" id="actWrap"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const RANGES = ["1M","3M","6M","1Y","3Y","5Y","ALL"];
+const SLOTS = ["--s1","--s2","--s3","--s4"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+const state = { catalog:null, selected:[], index:null, range:"1Y", adjust:true,
+                data:null, compare:null, idx:null, showTable:false, seq:0, syncKind:"stock" };
+
+// ---------- format helpers ----------
+const nf0 = new Intl.NumberFormat("en-IN");
+const nf2 = new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const inr = v => (v==null? "–" : "₹"+nf2.format(v));
+const pct = v => (v==null? "–" : (v>0?"+":"")+v.toFixed(2)+"%");
+function vol(v){
+  if(v==null) return "–";
+  if(v>=1e7) return (v/1e7).toFixed(2)+" Cr";
+  if(v>=1e5) return (v/1e5).toFixed(2)+" L";
+  return nf0.format(v);
+}
+function volAxisFmt(top){            // one decimal rule per axis, so 10Cr and 5.0Cr never mix
+  if(top>=1e7){ const d=(top/1e7)>=10?0:1; return v=>v===0?"0":(v/1e7).toFixed(d)+"Cr"; }
+  if(top>=1e5){ const d=(top/1e5)>=10?0:1; return v=>v===0?"0":(v/1e5).toFixed(d)+"L"; }
+  return v=>nf0.format(v);
+}
+function priceTick(v){
+  if(Math.abs(v)>=10000) return (v/1000).toFixed(v>=100000?0:1)+"K";
+  return nf0.format(Math.round(v*100)/100);
+}
+const dlong = s => { const [y,m,d]=s.split("-"); return `${+d} ${MON[+m-1]} ${y}`; };
+function daxis(s, spanDays){
+  const [y,m,d]=s.split("-");
+  if(spanDays>900) return `${MON[+m-1]} '${y.slice(2)}`;
+  if(spanDays>150) return `${MON[+m-1]} ${y.slice(2)}`;
+  return `${+d} ${MON[+m-1]}`;
+}
+const T = s => Date.parse(s+"T00:00:00Z");
+const cssVar = n => getComputedStyle(document.body).getPropertyValue(n).trim();
+
+function niceTicks(min,max,count){
+  if(!(max>min)){ max=min+1; min=min-1; }
+  const step0=(max-min)/count, mag=Math.pow(10,Math.floor(Math.log10(step0))), n=step0/mag;
+  const step=(n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*mag;
+  const out=[]; for(let v=Math.floor(min/step)*step; v<=max+step/2; v+=step) out.push(+v.toFixed(10));
+  return out;
+}
+function el(tag, cls, txt){ const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
+function svgEl(tag, attrs){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+function svgText(p,x,y,str,cls,anchor,baseline){
+  const t=svgEl("text",{x,y}); if(cls)t.setAttribute("class",cls);
+  if(anchor)t.setAttribute("text-anchor",anchor);
+  if(baseline)t.setAttribute("dominant-baseline",baseline);
+  t.textContent=str; p.appendChild(t); return t;         // untrusted labels: textContent
+}
+
+// ---------- line chart (1..4 series, time x-axis) ----------
+function renderLine(host, cfg){
+  host.textContent = "";
+  const series = cfg.series.filter(s=>s.points.length>1);
+  if(!series.length){ host.appendChild(el("p","note","No data in this range")); return; }
+  const multi = series.length>1;
+  const W = Math.max(host.clientWidth||880, 320), H = cfg.height||300;
+  const pad = {t:10, r:multi?78:84, b:28, l:58};
+  const pw = W-pad.l-pad.r, ph = H-pad.t-pad.b;
+
+  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+  for(const s of series) for(const [d,v] of s.points){
+    const t=T(d); if(t<x0)x0=t; if(t>x1)x1=t; if(v<y0)y0=v; if(v>y1)y1=v;
+  }
+  const yPad=(y1-y0)*0.06 || 1; y0-=yPad; y1+=yPad;
+  const spanDays=(x1-x0)/864e5;
+  const X = t => pad.l + (t-x0)/(x1-x0||1)*pw;
+  const Y = v => pad.t + (1-(v-y0)/(y1-y0||1))*ph;
+
+  const svg = svgEl("svg",{viewBox:`0 0 ${W} ${H}`, role:"img", tabindex:"0",
+    "aria-label":cfg.aria||"line chart"});
+  svg.style.height = H+"px";
+
+  // y grid + ticks
+  const yt = niceTicks(y0,y1,5);
+  for(const v of yt){
+    if(v<y0||v>y1) continue;
+    svg.appendChild(svgEl("line",{class:"gridline",x1:pad.l,x2:pad.l+pw,y1:Y(v),y2:Y(v)}));
+    svgText(svg, pad.l-9, Y(v), cfg.yFmt? cfg.yFmt(v) : priceTick(v), "tick","end","middle");
+  }
+  // x axis + ticks
+  svg.appendChild(svgEl("line",{class:"axisline",x1:pad.l,x2:pad.l+pw,y1:pad.t+ph,y2:pad.t+ph}));
+  const nxt = Math.max(2, Math.min(6, Math.floor(pw/120)));
+  for(let i=0;i<=nxt;i++){
+    const t=x0+(x1-x0)*i/nxt, xx=X(t);
+    const iso=new Date(t).toISOString().slice(0,10);
+    svgText(svg, xx, pad.t+ph+16, daxis(iso,spanDays), "tick", i===0?"start":i===nxt?"end":"middle","hanging");
+  }
+  // corporate-action ex-date hairlines
+  for(const m of (cfg.marks||[])){
+    const t=T(m.date); if(t<x0||t>x1) continue;
+    svg.appendChild(svgEl("line",{class:"markline",x1:X(t),x2:X(t),y1:pad.t,y2:pad.t+ph}));
+  }
+  // area wash for a single series
+  if(!multi){
+    const s=series[0], c=cssVar(s.colorVar);
+    let d=`M${X(T(s.points[0][0]))},${Y(s.points[0][1])}`;
+    for(const [dt,v] of s.points.slice(1)) d+=`L${X(T(dt))},${Y(v)}`;
+    const area=d+`L${X(T(s.points[s.points.length-1][0]))},${pad.t+ph}L${X(T(s.points[0][0]))},${pad.t+ph}Z`;
+    svg.appendChild(svgEl("path",{d:area, fill:c, "fill-opacity":"0.10", stroke:"none"}));
+  }
+  // lines
+  const paths=[];
+  for(const s of series){
+    const c=cssVar(s.colorVar);
+    let d=`M${X(T(s.points[0][0]))},${Y(s.points[0][1])}`;
+    for(const [dt,v] of s.points.slice(1)) d+=`L${X(T(dt))},${Y(v)}`;
+    svg.appendChild(svgEl("path",{d, fill:"none", stroke:c, "stroke-width":"2",
+      "stroke-linejoin":"round","stroke-linecap":"round"}));
+    paths.push({s,c});
+  }
+  // end dots (2px surface ring) + direct end labels
+  const ends=[];
+  for(const {s,c} of paths){
+    const last=s.points[s.points.length-1];
+    const cx=X(T(last[0])), cy=Y(last[1]);
+    svg.appendChild(svgEl("circle",{cx,cy,r:4,fill:c,stroke:cssVar("--surface-1"),"stroke-width":"2"}));
+    ends.push({name:s.name, y:cy, x:cx, val:last[1]});
+  }
+  ends.sort((a,b)=>a.y-b.y);
+  let collide=false;
+  for(let i=1;i<ends.length;i++) if(ends[i].y-ends[i-1].y < 14) collide=true;
+  if(!collide){            // when labels would collide, the legend carries identity instead
+    for(const e of ends)
+      svgText(svg, e.x+9, e.y, cfg.labelFmt? cfg.labelFmt(e) : e.name, "endlab","start","middle");
+  }
+
+  // hover / focus layer
+  const cross=svgEl("g",{}); cross.style.display="none";
+  const vline=svgEl("line",{class:"crosshair",y1:pad.t,y2:pad.t+ph}); cross.appendChild(vline);
+  const dots=paths.map(({c})=>{
+    const d=svgEl("circle",{r:4,fill:c,stroke:cssVar("--surface-1"),"stroke-width":"2"});
+    cross.appendChild(d); return d;
+  });
+  svg.appendChild(cross);
+  const hit=svgEl("rect",{class:"hit",x:pad.l,y:pad.t,width:pw,height:ph});
+  svg.appendChild(hit);
+  host.appendChild(svg);
+
+  const tip=el("div","tip"); host.appendChild(tip);
+  const idxOf = (s,t) => {            // nearest point: the reader aims at a date, not at a 2px line
+    const p=s.points; let lo=0,hi=p.length-1;
+    while(lo<hi){ const mid=(lo+hi)>>1; if(T(p[mid][0])<t) lo=mid+1; else hi=mid; }
+    if(lo>0 && Math.abs(T(p[lo-1][0])-t) < Math.abs(T(p[lo][0])-t)) lo--;
+    return lo;
+  };
+  let cursor=null;
+  function show(t){
+    cross.style.display=""; tip.style.opacity="1";
+    const base=series[0], bi=idxOf(base,t), bt=T(base.points[bi][0]);
+    vline.setAttribute("x1",X(bt)); vline.setAttribute("x2",X(bt));
+    tip.textContent="";
+    const head=el("div","td", dlong(base.points[bi][0])); tip.appendChild(head);
+    paths.forEach(({s,c},i)=>{
+      const j=idxOf(s,bt), p=s.points[j];
+      dots[i].setAttribute("cx",X(T(p[0]))); dots[i].setAttribute("cy",Y(p[1]));
+      dots[i].style.display = Math.abs(T(p[0])-bt) > 5*864e5 ? "none":"";
+      const row=el("div","row");
+      const key=el("span","key");
+      const lk=el("i","lk"); lk.style.background=c; lk.style.width="12px"; lk.style.height="2px";
+      key.appendChild(lk); key.appendChild(el("span",null,s.name));
+      row.appendChild(key);
+      row.appendChild(el("span","val", cfg.tipFmt? cfg.tipFmt(p[1],s) : inr(p[1])));
+      tip.appendChild(row);
+    });
+    const extra = cfg.tipExtra && cfg.tipExtra(base.points[bi][0]);
+    if(extra) tip.appendChild(el("div","td", extra));
+    const tw=tip.offsetWidth||150;
+    let left=X(bt)+14; if(left+tw>W-4) left=X(bt)-tw-14;
+    tip.style.left=Math.max(4,left)+"px"; tip.style.top=(pad.t+6)+"px";
+    cursor=bi;
+  }
+  function hide(){ cross.style.display="none"; tip.style.opacity="0"; }
+  hit.addEventListener("pointermove", ev=>{
+    const r=svg.getBoundingClientRect();
+    const px=(ev.clientX-r.left)*(W/r.width);
+    show(x0+(px-pad.l)/pw*(x1-x0));
+  });
+  hit.addEventListener("pointerleave", hide);
+  svg.addEventListener("focus", ()=> show(cursor==null? x1 : T(series[0].points[cursor][0])));
+  svg.addEventListener("blur", hide);
+  svg.addEventListener("keydown", ev=>{
+    if(ev.key!=="ArrowLeft" && ev.key!=="ArrowRight") return;
+    ev.preventDefault();
+    const n=series[0].points.length;
+    cursor = cursor==null? n-1 : Math.max(0, Math.min(n-1, cursor+(ev.key==="ArrowRight"?1:-1)));
+    show(T(series[0].points[cursor][0]));
+  });
+}
+
+// ---------- volume bars (bucketed so bars keep their specs) ----------
+function renderVolume(host, rows){
+  host.textContent="";
+  const pts = rows.filter(r=>r[5]!=null);
+  if(pts.length<2){ host.appendChild(el("p","note","No volume data")); return; }
+  const target=80, size=Math.ceil(pts.length/target), buckets=[];
+  for(let i=0;i<pts.length;i+=size){
+    const slice=pts.slice(i,i+size);
+    buckets.push({
+      from:slice[0][0], to:slice[slice.length-1][0], n:slice.length,
+      v: slice.reduce((a,r)=>a+r[5],0)/slice.length
+    });
+  }
+  const W=Math.max(host.clientWidth||880,320), H=150;
+  const pad={t:10,r:84,b:28,l:58}, pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const vmax=Math.max(...buckets.map(b=>b.v));
+  const yt=niceTicks(0,vmax,3);
+  const top=yt[yt.length-1];
+  const vfmt=volAxisFmt(top);
+  const Y=v=>pad.t+(1-v/top)*ph;
+  const band=pw/buckets.length, bw=Math.min(24, Math.max(1, band-2));   // 2px surface gap
+
+  const svg=svgEl("svg",{viewBox:`0 0 ${W} ${H}`, role:"img", tabindex:"0",
+    "aria-label":"volume bars"});
+  svg.style.height=H+"px";
+  for(const v of yt){
+    svg.appendChild(svgEl("line",{class:"gridline",x1:pad.l,x2:pad.l+pw,y1:Y(v),y2:Y(v)}));
+    svgText(svg,pad.l-9,Y(v),vfmt(v),"tick","end","middle");
+  }
+  svg.appendChild(svgEl("line",{class:"axisline",x1:pad.l,x2:pad.l+pw,y1:pad.t+ph,y2:pad.t+ph}));
+  const spanDays=(T(buckets[buckets.length-1].to)-T(buckets[0].from))/864e5;
+  [0, Math.floor(buckets.length/2), buckets.length-1].forEach((i,k)=>{
+    svgText(svg, pad.l+band*(i+0.5), pad.t+ph+16, daxis(buckets[i].from,spanDays), "tick",
+      k===0?"start":k===2?"end":"middle","hanging");
+  });
+
+  const c=cssVar("--s1");
+  const tip=el("div","tip");
+  buckets.forEach((b,i)=>{
+    const h=Math.max(1,ph-(Y(b.v)-pad.t)), x=pad.l+band*i+(band-bw)/2, y=pad.t+ph-h;
+    const r=Math.min(4,bw/2,h);
+    svg.appendChild(svgEl("path",{
+      d:`M${x},${y+h}L${x},${y+r}Q${x},${y} ${x+r},${y}L${x+bw-r},${y}Q${x+bw},${y} ${x+bw},${y+r}L${x+bw},${y+h}Z`,
+      fill:c
+    }));
+    const hitr=svgEl("rect",{class:"hit",x:pad.l+band*i,y:pad.t,width:Math.max(band,6),height:ph});
+    hitr.addEventListener("pointerenter",()=>{
+      tip.textContent="";
+      tip.appendChild(el("div","td", b.n>1? dlong(b.from)+" – "+dlong(b.to) : dlong(b.from)));
+      const row=el("div","row");
+      const key=el("span","key"); const lk=el("i","lk"); lk.style.background=c;
+      key.appendChild(lk); key.appendChild(el("span",null, b.n>1? "avg daily":"volume"));
+      row.appendChild(key); row.appendChild(el("span","val", vol(Math.round(b.v))));
+      tip.appendChild(row);
+      tip.style.opacity="1";
+      const tw=tip.offsetWidth||150; let left=pad.l+band*i+14;
+      if(left+tw>W-4) left=pad.l+band*i-tw-6;
+      tip.style.left=Math.max(4,left)+"px"; tip.style.top="8px";
+    });
+    hitr.addEventListener("pointerleave",()=>{tip.style.opacity="0";});
+    svg.appendChild(hitr);
+  });
+  host.appendChild(svg); host.appendChild(tip);
+  return {size, n:buckets.length};
+}
+
+// ---------- data ----------
+async function api(path){
+  const r=await fetch(path,{headers:{"Accept":"application/json"}});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+function setLoading(on){ document.getElementById("main").classList.toggle("loading",on); }
+
+async function loadCatalog(){
+  state.catalog=await api("/api/catalog");
+  const d=state.catalog.db;
+  document.getElementById("dbinfo").textContent =
+    `${nf0.format(d.rows)} rows · ${state.catalog.stocks.length} symbols · ${d.size_mb} MB · local SQLite`;
+  // render chips AFTER the selection is set, otherwise nothing shows as highlighted
+  state.selected = state.selected.filter(s=>state.catalog.stocks.some(x=>x.symbol===s));
+  if(state.index && !state.catalog.indices.some(i=>i.name===state.index)) state.index=null;
+  if(!state.selected.length && !state.index){
+    if(state.catalog.stocks.length) state.selected=[state.catalog.stocks[0].symbol];
+    else if(state.catalog.indices.length) state.index=state.catalog.indices[0].name;
+  }
+  renderChips(); renderIdxChips();
+}
+
+function renderChips(){
+  const box=document.getElementById("symChips"); box.textContent="";
+  for(const s of state.catalog.stocks){
+    const b=el("button","chip");
+    b.type="button";
+    b.setAttribute("aria-pressed", state.selected.includes(s.symbol));
+    const i=state.selected.indexOf(s.symbol);
+    if(i>=0) b.style.setProperty("--pill", `var(${SLOTS[i%4]})`);
+    b.appendChild(el("span","dot"));
+    b.appendChild(el("span",null,s.symbol));
+    b.title=`${s.days} trading days · ${s.from} → ${s.to}`;
+    b.addEventListener("click",()=>{
+      const k=state.selected.indexOf(s.symbol);
+      if(state.index){ state.index=null; state.selected=[s.symbol]; }     // index view se wapas
+      else if(k>=0){ if(state.selected.length>1) state.selected.splice(k,1); }
+      else if(state.selected.length<4) state.selected.push(s.symbol);
+      renderChips(); renderIdxChips(); refresh();
+    });
+    box.appendChild(b);
+  }
+}
+
+function renderIdxChips(){
+  const box=document.getElementById("idxChips"), lab=document.getElementById("idxLabel");
+  const list=(state.catalog && state.catalog.indices) || [];
+  lab.classList.toggle("hidden", !list.length);
+  box.textContent="";
+  for(const ix of list){
+    const b=el("button","chip"); b.type="button";
+    const on = state.index===ix.name;
+    b.setAttribute("aria-pressed", on);
+    if(on) b.style.setProperty("--pill","var(--s1)");
+    b.appendChild(el("span","dot"));
+    b.appendChild(el("span",null,ix.name));
+    b.title=`${ix.days} days · ${ix.from} → ${ix.to}`;
+    b.addEventListener("click",()=>{
+      state.index = on? null : ix.name;
+      if(state.index) state.selected=[];
+      else if(state.catalog.stocks.length) state.selected=[state.catalog.stocks[0].symbol];
+      renderChips(); renderIdxChips(); refresh();
+    });
+    box.appendChild(b);
+  }
+}
+function renderRangeSeg(){
+  const box=document.getElementById("rangeSeg"); box.textContent="";
+  for(const r of RANGES){
+    const b=el("button",null,r); b.type="button";
+    b.setAttribute("aria-pressed", state.range===r);
+    b.addEventListener("click",()=>{ state.range=r; renderRangeSeg(); refresh(); });
+    box.appendChild(b);
+  }
+}
+
+async function refresh(){
+  const empty=document.getElementById("emptyState");
+  const has=state.catalog && (state.catalog.stocks.length || state.catalog.indices.length);
+  empty.classList.toggle("hidden", !!has);
+  for(const id of ["hero","kpis","priceCard","volCard","tableCard","actCard"])
+    document.getElementById(id).classList.toggle("hidden", !has);
+  if(!has) return;
+  // rapid clicks: a slower earlier response must not overwrite the newer view
+  const my = ++state.seq;
+  setLoading(true);
+  try{
+    if(state.index){
+      const ix=await api(`/api/index?name=${encodeURIComponent(state.index)}&range=${state.range}`);
+      if(my!==state.seq) return;
+      state.idx=ix; state.data=null; state.compare=null; drawIndex();
+    }else if(state.selected.length>1){
+      const c=await api(`/api/compare?symbols=${encodeURIComponent(state.selected.join(","))}`
+        +`&range=${state.range}&adjust=${state.adjust?1:0}`);
+      if(my!==state.seq) return;
+      state.compare=c; state.data=null; state.idx=null; drawCompare();
+    }else{
+      const d=await api(`/api/series?symbol=${encodeURIComponent(state.selected[0])}`
+        +`&range=${state.range}&adjust=${state.adjust?1:0}`);
+      if(my!==state.seq) return;
+      state.data=d; state.compare=null; state.idx=null; drawSingle();
+    }
+  }catch(e){
+    if(my===state.seq) document.getElementById("priceChart").textContent="load fail: "+e.message;
+  }finally{ if(my===state.seq) setLoading(false); }
+}
+
+// ---------- single-symbol view ----------
+function drawSingle(){
+  const d=state.data, st=d.stats||{};
+  const up = (st.ret||0) >= 0;
+  document.getElementById("heroLabel").textContent = `${d.symbol} · last close (${st.last_date? dlong(st.last_date):"–"})`;
+  enableAdjust();
+  const hf=document.getElementById("heroFigure");
+  hf.className="figure";              // drop the up/down colour carried over from compare view
+  hf.textContent = inr(st.last);
+  const meta=document.getElementById("heroMeta"); meta.textContent="";
+  const dl=el("span","delta "+(up?"up":"down"), pct(st.ret));
+  meta.appendChild(dl);
+  meta.appendChild(document.createTextNode(
+    ` over ${state.range==="ALL"?"the full local history":state.range}`
+    + ` · ${st.days||0} trading days · ${d.adjust?"split/bonus adjusted":"raw bhavcopy"}`));
+
+  const sma=d.sma||{};
+  const tiles=[
+    ["Period high", inr(st.hi&&st.hi.v), st.hi&&dlong(st.hi.d)],
+    ["Period low", inr(st.lo&&st.lo.v), st.lo&&dlong(st.lo.d)],
+    ["Max drawdown", pct(st.mdd), st.mdd_date&&("trough "+dlong(st.mdd_date))],
+    ["SMA 50", inr(sma[50]), sma[50]&&st.last? pct((st.last/sma[50]-1)*100)+" vs close":"full history"],
+    ["SMA 200", inr(sma[200]), sma[200]&&st.last? pct((st.last/sma[200]-1)*100)+" vs close":"full history"],
+    ["Avg volume (20d)", vol(st.avg_vol), "last 20 trading days"],
+  ];
+  const kp=document.getElementById("kpis"); kp.textContent="";
+  for(const [k,v,n] of tiles){
+    const t=el("div","tile");
+    t.appendChild(el("div","k",k)); t.appendChild(el("div","v",v||"–"));
+    if(n) t.appendChild(el("div","n",n));
+    kp.appendChild(t);
+  }
+
+  document.getElementById("priceTitle").textContent = `${d.symbol} — daily close`;
+  document.getElementById("priceSub").textContent =
+    `${d.adjust?"Split/bonus adjusted":"Unadjusted bhavcopy"} · ${st.first_date? dlong(st.first_date):""} → ${st.last_date? dlong(st.last_date):""}`
+    + ` · local span ${d.full_span.from} → ${d.full_span.to} (${d.full_span.days} days)`;
+  const lo=d.rows.length? d.rows[0][0]:"9999", hi=d.rows.length? d.rows[d.rows.length-1][0]:"0";
+  const marks=(d.actions||[]).filter(a=>a.factor!=null && Math.abs(a.factor-1)>1e-4
+                                        && a.ex>=lo && a.ex<=hi);
+  const markMap={}; for(const m of marks) markMap[m.ex]=m;
+  renderLine(document.getElementById("priceChart"),{
+    series:[{name:d.symbol, colorVar:"--s1", points:d.rows.map(r=>[r[0],r[4]])}],
+    marks: marks.map(m=>({date:m.ex})),
+    aria:`${d.symbol} daily close line chart`,
+    labelFmt:e=>inr(e.val),
+    tipExtra:iso=>{
+      const row=d.rows.find(r=>r[0]===iso);
+      let s = row? `O ${nf2.format(row[1])} · H ${nf2.format(row[2])} · L ${nf2.format(row[3])} · vol ${vol(row[5])}` : "";
+      if(markMap[iso]) s += (s?"  ":"") + "⟂ ex-date: "+markMap[iso].purpose;
+      return s;
+    }
+  });
+  document.getElementById("priceLegend").classList.add("hidden");
+  const mn=document.getElementById("markNote");
+  mn.classList.toggle("hidden", !marks.length);
+  mn.textContent = marks.length
+    ? `Vertical hairline = split/bonus ex-date (${marks.map(m=>dlong(m.ex)).join(", ")}). Prices before that date are adjusted.`
+    : "";
+
+  const vinfo=renderVolume(document.getElementById("volChart"), d.rows);
+  document.getElementById("volSub").textContent = vinfo
+    ? (vinfo.size>1
+        ? `Avg daily volume per ${vinfo.size}-day bucket (${vinfo.n} bars) — 1,200+ daily bars would be sub-pixel`
+        : `Daily traded quantity (${vinfo.n} bars)`)
+    : "";
+
+  document.getElementById("tableTitle").textContent = `Table view — ${d.symbol} OHLCV`;
+  drawTable();
+  drawActions();
+}
+
+function drawTable(){
+  const wrap=document.getElementById("tableWrap");
+  wrap.classList.toggle("hidden", !state.showTable);
+  document.getElementById("tableToggle").textContent = state.showTable? "Hide":"Show";
+  if(!state.showTable) return;
+  wrap.textContent="";
+  const t=el("table");
+  const thead=el("thead"), hr=el("tr");
+  for(const h of ["Date","Open","High","Low","Close","Volume"]) hr.appendChild(el("th",null,h));
+  thead.appendChild(hr); t.appendChild(thead);
+  const tb=el("tbody");
+  const src = state.idx || state.data;
+  if(state.compare){
+    hr.textContent=""; for(const h of ["Symbol","Return","From","To"]) hr.appendChild(el("th",null,h));
+    for(const s of state.compare.series){
+      const tr=el("tr");
+      tr.appendChild(el("td",null,s.symbol));
+      tr.appendChild(el("td",null,pct(s.ret)));
+      tr.appendChild(el("td",null,dlong(s.from)));
+      tr.appendChild(el("td",null,dlong(s.to)));
+      tb.appendChild(tr);
+    }
+  }else{
+    for(const r of src.rows.slice().reverse()){
+      const tr=el("tr");
+      tr.appendChild(el("td",null,dlong(r[0])));
+      for(const v of [r[1],r[2],r[3],r[4]]) tr.appendChild(el("td",null,v==null?"–":nf2.format(v)));
+      tr.appendChild(el("td",null,vol(r[5])));
+      tb.appendChild(tr);
+    }
+  }
+  t.appendChild(tb); wrap.appendChild(t);
+}
+
+function drawActions(){
+  const d=state.data;
+  const wrap=document.getElementById("actWrap"); wrap.textContent="";
+  const acts=d.actions||[];
+  const n=acts.filter(a=>a.factor!=null && Math.abs(a.factor-1)>1e-4).length;
+  document.getElementById("actSub").textContent =
+    `${acts.length} events · ${n} price-affecting (split/bonus)`
+    + (d.skipped && d.skipped.length
+        ? ` · ${d.skipped.map(s=>s.series+"×"+s.n).join(", ")} rows excluded (server returned a non-EQ series on those dates)`
+        : "");
+  if(!acts.length){ wrap.appendChild(el("p","note","No corporate actions")); return; }
+  const t=el("table"), thead=el("thead"), hr=el("tr");
+  for(const h of ["Ex-date","Type","Purpose","Factor"]){
+    const th=el("th",null,h); if(h==="Purpose") th.style.textAlign="left"; hr.appendChild(th);
+  }
+  thead.appendChild(hr); t.appendChild(thead);
+  const tb=el("tbody");
+  for(const a of acts){
+    const tr=el("tr");
+    tr.appendChild(el("td",null,dlong(a.ex)));
+    tr.appendChild(el("td",null,a.type||"–"));
+    const td=el("td",null,a.purpose||"–"); td.style.textAlign="left"; tr.appendChild(td);
+    tr.appendChild(el("td",null,a.factor==null?"–":a.factor.toFixed(4)));
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb); wrap.appendChild(t);
+}
+
+// ---------- index view ----------
+function drawIndex(){
+  const d=state.idx, st=d.stats||{}, val=d.valuation||{};
+  document.getElementById("actCard").classList.add("hidden");
+  const adj=document.getElementById("adjChk");
+  adj.disabled=true; adj.parentElement.style.opacity=".45";
+  adj.parentElement.title="Indices need no split/bonus adjustment";
+  const ex=document.getElementById("exportBtn");
+  ex.disabled=true; ex.title="CSV export is for stocks";
+
+  if(!d.rows.length){
+    document.getElementById("priceChart").textContent="No data in this range";
+    document.getElementById("kpis").textContent="";
+    return;
+  }
+  const hf=document.getElementById("heroFigure"); hf.className="figure";
+  document.getElementById("heroLabel").textContent =
+    `${d.name} · close (${st.last_date? dlong(st.last_date):"–"})`;
+  hf.textContent = nf2.format(st.last);
+  const meta=document.getElementById("heroMeta"); meta.textContent="";
+  meta.appendChild(el("span","delta "+((st.ret||0)>=0?"up":"down"), pct(st.ret)));
+  meta.appendChild(document.createTextNode(
+    ` over ${state.range==="ALL"?"the full local history":state.range} · ${st.days||0} trading days`));
+
+  const tiles=[
+    ["Period high", nf2.format(st.hi.v), dlong(st.hi.d)],
+    ["Period low", nf2.format(st.lo.v), dlong(st.lo.d)],
+    ["Max drawdown", pct(st.mdd), st.mdd_date&&("trough "+dlong(st.mdd_date))],
+    ["P/E", val.pe==null?"–":nf2.format(val.pe), "as published by NSE"],
+    ["P/B", val.pb==null?"–":nf2.format(val.pb), "as published by NSE"],
+    ["Dividend yield", val.div==null?"–":nf2.format(val.div)+"%", "as published by NSE"],
+  ];
+  const kp=document.getElementById("kpis"); kp.textContent="";
+  for(const [k,v,note] of tiles){
+    const t=el("div","tile");
+    t.appendChild(el("div","k",k)); t.appendChild(el("div","v",v||"–"));
+    if(note) t.appendChild(el("div","n",note));
+    kp.appendChild(t);
+  }
+
+  document.getElementById("priceTitle").textContent = `${d.name} — daily close`;
+  document.getElementById("priceSub").textContent =
+    `Index level, not a share price · ${st.first_date? dlong(st.first_date):""} → ${st.last_date? dlong(st.last_date):""}`;
+  renderLine(document.getElementById("priceChart"),{
+    series:[{name:d.name, colorVar:"--s1", points:d.rows.map(r=>[r[0],r[4]])}],
+    aria:`${d.name} daily close line chart`,
+    yFmt:v=>nf0.format(Math.round(v)),
+    tipFmt:v=>nf2.format(v),
+    labelFmt:e=>nf2.format(e.val),
+    tipExtra:iso=>{
+      const row=d.rows.find(r=>r[0]===iso);
+      return row? `O ${nf2.format(row[1])} · H ${nf2.format(row[2])} · L ${nf2.format(row[3])}` : "";
+    }
+  });
+  document.getElementById("priceLegend").classList.add("hidden");
+  document.getElementById("markNote").classList.add("hidden");
+
+  const vinfo=renderVolume(document.getElementById("volChart"), d.rows);
+  document.getElementById("volSub").textContent = vinfo
+    ? (vinfo.size>1 ? `Avg daily volume per ${vinfo.size}-day bucket (${vinfo.n} bars)`
+                    : `Daily traded quantity (${vinfo.n} bars)`) : "";
+  document.getElementById("tableTitle").textContent = `Table view — ${d.name} OHLCV`;
+  drawTable();
+}
+
+// ---------- compare view ----------
+function enableAdjust(){
+  const adj=document.getElementById("adjChk");
+  adj.disabled=false; adj.parentElement.style.opacity=""; adj.parentElement.title="";
+  const ex=document.getElementById("exportBtn"); ex.disabled=false; ex.title="";
+}
+
+function drawCompare(){
+  enableAdjust();
+  const c=state.compare;
+  document.getElementById("volCard").classList.add("hidden");
+  document.getElementById("actCard").classList.add("hidden");
+  if(!c.series.length){
+    document.getElementById("priceChart").textContent="No data in this range";
+    document.getElementById("kpis").textContent="";
+    return;
+  }
+  const best=c.series[0];
+  document.getElementById("heroLabel").textContent = `Range leader · ${state.range==="ALL"?"the full local history":state.range}`;
+  document.getElementById("heroFigure").textContent = pct(best.ret);
+  document.getElementById("heroFigure").className = "figure "+(best.ret>=0?"up":"down");
+  document.getElementById("heroMeta").textContent =
+    `${best.symbol} · ${c.series.length} symbols indexed to 100 on ${dlong(best.from)}`
+    + ` · ${c.adjust?"split/bonus adjusted":"raw bhavcopy"}`;
+
+  const kp=document.getElementById("kpis"); kp.textContent="";
+  c.series.forEach((s,i)=>{
+    const t=el("div","tile");
+    const k=el("div","k"); 
+    const sw=el("i"); sw.style.cssText=`display:inline-block;width:14px;height:2px;border-radius:1px;margin-right:6px;vertical-align:middle;background:var(${SLOTS[i%4]})`;
+    k.appendChild(sw); k.appendChild(el("span",null,s.symbol));
+    t.appendChild(k);
+    const v=el("div","v "+(s.ret>=0?"up":"down"), pct(s.ret)); t.appendChild(v);
+    t.appendChild(el("div","n", dlong(s.from)+" → "+dlong(s.to)));
+    kp.appendChild(t);
+  });
+
+  document.getElementById("priceTitle").textContent = "Indexed return — first day = 100";
+  document.getElementById("priceSub").textContent =
+    "Absolute price levels differ, so every series is normalised to 100 to be comparable on one axis."
+    + (c.adjust? " Split/bonus adjusted.":" Unadjusted.");
+  renderLine(document.getElementById("priceChart"),{
+    series:c.series.map((s,i)=>({name:s.symbol, colorVar:SLOTS[i%4], points:s.points})),
+    aria:"indexed return comparison",
+    yFmt:v=>nf0.format(Math.round(v)),
+    tipFmt:v=>nf2.format(v),
+    labelFmt:e=>e.name
+  });
+  const lg=document.getElementById("priceLegend"); lg.textContent=""; lg.classList.remove("hidden");
+  c.series.forEach((s,i)=>{
+    const k=el("span","k");
+    const i2=el("i"); i2.style.background=`var(${SLOTS[i%4]})`;
+    k.appendChild(i2); k.appendChild(el("span",null,s.symbol));
+    lg.appendChild(k);
+  });
+  document.getElementById("markNote").classList.add("hidden");
+  document.getElementById("tableTitle").textContent="Table view — indexed returns";
+  drawTable();
+}
+
+// ---------- sync ----------
+async function runSync(){
+  const inp=document.getElementById("syncSyms");
+  const names=inp.value.split(",").map(s=>s.trim()).filter(Boolean);
+  const isIndex = state.syncKind==="index";
+  if(!names.length){
+    document.getElementById("syncState").textContent = isIndex? "Enter an index name":"Enter a symbol";
+    return;
+  }
+  const btn=document.getElementById("syncRun"), log=document.getElementById("syncLog");
+  btn.disabled=true;
+  document.getElementById("syncState").textContent="Running… (~50s for a new symbol)";
+  log.classList.remove("hidden"); log.textContent="…";
+  try{
+    const years=+document.getElementById("syncYears").value;
+    const body = isIndex? {indices:names, years} : {symbols:names, years};
+    const r=await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)});
+    const j=await r.json();
+    let out=j.log||"(no output)";
+    if(!isIndex && /nothing found/.test(out))
+      out += "\n\nIf that is an index (Nifty 50, Nifty Bank, Nifty IT), switch the toggle to Index.";
+    log.textContent=out;
+    document.getElementById("syncState").textContent = j.ok? `done · ${j.calls} network calls` : "fail";
+    if(j.catalog){
+      if(isIndex){
+        const hit=j.catalog.indices.find(i=>i.name.toLowerCase()===names[0].toLowerCase());
+        if(hit){ state.index=hit.name; state.selected=[]; }
+      }else{
+        const first=names[0].toUpperCase();
+        if(j.catalog.stocks.some(s=>s.symbol===first)){ state.selected=[first]; state.index=null; }
+      }
+      await loadCatalog(); refresh();
+    }
+  }catch(e){
+    log.textContent="ERROR: "+e.message;
+    document.getElementById("syncState").textContent="fail";
+  }finally{ btn.disabled=false; }
+}
+
+// ---------- wire up ----------
+document.getElementById("themeBtn").addEventListener("click",()=>{
+  const cur=document.documentElement.dataset.theme;
+  const dark=cur? cur==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark? "light":"dark";
+  document.getElementById("themeBtn").textContent = dark? "theme: light":"theme: dark";
+  redraw();
+});
+document.getElementById("adjChk").addEventListener("change",e=>{ state.adjust=e.target.checked; refresh(); });
+document.getElementById("tableToggle").addEventListener("click",()=>{ state.showTable=!state.showTable; drawTable(); });
+document.getElementById("syncToggle").addEventListener("click",()=>{
+  document.getElementById("syncCard").classList.toggle("hidden");
+});
+document.getElementById("syncKind").addEventListener("click", ev=>{
+  const b=ev.target.closest("button[data-kind]"); if(!b) return;
+  state.syncKind=b.dataset.kind;
+  for(const x of document.querySelectorAll("#syncKind button"))
+    x.setAttribute("aria-pressed", x.dataset.kind===state.syncKind);
+  document.getElementById("syncSyms").placeholder =
+    state.syncKind==="index" ? "Nifty 50, Nifty Bank" : "RELIANCE, TCS, INFY";
+});
+document.getElementById("syncRun").addEventListener("click", runSync);
+document.getElementById("exportBtn").addEventListener("click",()=>{
+  if(!state.selected.length) return;
+  location.href=`/api/export?symbol=${encodeURIComponent(state.selected[0])}&adjust=${state.adjust?1:0}`;
+});
+function redraw(){
+  if(state.idx) drawIndex(); else if(state.compare) drawCompare(); else if(state.data) drawSingle();
+}
+let rt; addEventListener("resize",()=>{ clearTimeout(rt); rt=setTimeout(redraw,160); });
+
+renderRangeSeg();
+loadCatalog().then(refresh).catch(e=>{
+  document.getElementById("dbinfo").textContent="Could not reach the server: "+e.message;
+});
+</script>
+</body>
+</html>

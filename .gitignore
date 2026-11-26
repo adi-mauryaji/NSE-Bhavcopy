@@ -1,0 +1,15 @@
+# generated data (DB + CSV exports) - fresh clone pe nse.py khud bana leta hai
+data/
+*.csv
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# editors / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/

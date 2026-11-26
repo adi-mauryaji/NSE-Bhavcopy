@@ -1,0 +1,6 @@
+# Nifty 50 sample - ek symbol per line
+RELIANCE      # energy / conglomerate
+HDFCBANK      # private bank
+TCS           # IT services
+INFY          # IT services
+ITC           # FMCG (defensive)
